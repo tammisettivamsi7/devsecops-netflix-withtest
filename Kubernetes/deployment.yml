@@ -16,6 +16,6 @@ spec:
     spec:
       containers:
       - name: netflix-app
-        image: thammisettivamsi/netflix:8
+        image: thammisettivamsi/netflix:IMAGE_TAG
         ports:
         - containerPort: 80
