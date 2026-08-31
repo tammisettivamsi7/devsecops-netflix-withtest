@@ -79,9 +79,43 @@ pipeline {
                 """
             
     
-}
-}
-}
+                 }
+             }
+            }
+              stage('Approval for SIT') {
+            steps {
+                input message: 'DEV deployment completed. Approve deployment to SIT?',
+                      ok: 'Deploy to SIT'
+            }
+        }
+              stage('Deploy to SIT') {
+            steps {
+                dir('Kubernetes') {
+
+                    withKubeCredentials(
+                        kubectlCredentials: [[
+                            caCertificate: '',
+                            clusterName: 'EKS-1',
+                            contextName: '',
+                            credentialsId: 'k8s',
+                            namespace: '',
+                            serverUrl: 'https://865E04C871ECFD0BA10594EF4EC339E1.gr7.ap-south-1.eks.amazonaws.com'
+                        ]]
+                    ) {
+
+                        sh '''
+                            sed -i "s|IMAGE_TAG|${IMAGE_TAG}|g" deployment-sit.yml
+
+                            kubectl apply -f deployment-sit.yml
+                            kubectl apply -f service-sit.yml
+
+                            kubectl rollout status deployment/netflix-app-sit
+                        '''
+                    }
+                }
+            }
+        }
+
              
          }
     }
