@@ -1,0 +1,302 @@
+pipeline {
+
+    agent any
+
+    tools {
+        jdk 'jdk21'
+        nodejs 'node20'
+    }
+
+    environment {
+
+        // Docker
+        IMAGE_NAME = 'netflix'
+        IMAGE_TAG = "${BUILD_NUMBER}"
+
+        // AWS ECR
+        AWS_REGION = 'us-east-1'
+        AWS_ACCOUNT_ID = '836809165876'
+        ECR_REPO = 'netflix'
+
+        ECR_REGISTRY = "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+
+        ECR_IMAGE = "${ECR_REGISTRY}/${ECR_REPO}:${IMAGE_TAG}"
+        
+        DEV_CLUSTER  = 'netflix-dev-eks'
+        SIT_CLUSTER  = 'netflix-sit-eks'
+        PROD_CLUSTER = 'netflix-prod-eks'
+
+        // ==============================
+        // Kubernetes Namespaces
+        // ==============================
+        DEV_NAMESPACE  = 'dev'
+        SIT_NAMESPACE  = 'sit'
+        PROD_NAMESPACE = 'prod'
+    }
+
+    stages {
+
+        stage('Clean Workspace') {
+            steps {
+                echo '===== Cleaning Workspace ====='
+                cleanWs()
+            }
+        }
+
+
+         stage('Code Checkout') {
+
+            steps {
+
+                echo '===== Checking Out Current Branch ====='
+
+                checkout scm
+
+                sh '''
+                    echo "Current Branch:"
+                    git branch --show-current
+
+                    echo "Commit:"
+                    git rev-parse --short HEAD
+                '''
+            }
+        }
+
+
+        stage('Install Dependencies') {
+            steps {
+                echo '===== Installing Dependencies ====='
+
+                sh 'npm install'
+            }
+        }
+
+
+        stage('Unit Testing') {
+            steps {
+                echo '===== Running Unit Tests ====='
+
+                sh 'npm run test'
+            }
+        }
+
+
+        stage('Build Docker Image') {
+            steps {
+                echo '===== Building Docker Image ====='
+
+                sh '''
+                    docker build \
+                    -t ${IMAGE_NAME}:${IMAGE_TAG} \
+                    .
+                '''
+
+                sh 'docker images'
+            }
+        }
+
+
+        stage('Login to AWS ECR') {
+            steps {
+                echo '===== Logging into AWS ECR ====='
+
+                sh '''
+                    aws ecr get-login-password \
+                    --region ${AWS_REGION} |
+                    docker login \
+                    --username AWS \
+                    --password-stdin ${ECR_REGISTRY}
+                '''
+            }
+        }
+
+
+        stage('Tag Docker Image') {
+            steps {
+                echo '===== Tagging Docker Image ====='
+
+                sh '''
+                    echo "Source Image: ${IMAGE_NAME}:${IMAGE_TAG}"
+                    echo "ECR Image: ${ECR_IMAGE}"
+
+                    docker tag \
+                    ${IMAGE_NAME}:${IMAGE_TAG} \
+                    ${ECR_IMAGE}
+                '''
+            }
+        }
+
+
+        stage('Push Image to ECR') {
+            steps {
+                echo '===== Pushing Image to ECR ====='
+
+                sh '''
+                    docker push ${ECR_IMAGE}
+                '''
+            }
+        }
+
+
+        stage('Verify Image') {
+            steps {
+                echo '===== Verifying Image in ECR ====='
+
+                sh '''
+                    aws ecr describe-images \
+                    --repository-name ${ECR_REPO} \
+                    --image-ids imageTag=${IMAGE_TAG} \
+                    --region ${AWS_REGION}
+                '''
+            }
+        }
+        
+  stage('Deploy to DEV EKS') {
+
+            when {
+                branch 'develop'
+            }
+
+            steps {
+
+                echo '===== Deploying to DEV EKS ====='
+            }
+        }
+
+
+        // ============================================================
+        // 11. DEV VALIDATION
+        // ============================================================
+
+        stage('DEV Validation') {
+
+            when {
+                branch 'develop'
+            }
+
+            steps {
+
+                echo '===== DEV Deployment Validation ====='
+
+            }
+        }
+
+
+        // ============================================================
+        // 12. DEPLOY TO SIT
+        // ============================================================
+
+        stage('Deploy to SIT EKS') {
+
+            when {
+                branch 'SIT'
+            }
+
+            steps {
+
+                echo '===== Deploying to SIT EKS ====='
+
+            }
+        }
+
+
+        // ============================================================
+        // 13. SIT VALIDATION
+        // ============================================================
+
+        stage('SIT Validation') {
+
+            when {
+                branch 'SIT'
+            }
+
+            steps {
+
+                echo '===== SIT Deployment Validation ====='
+
+            }
+        }
+
+
+        // ============================================================
+        // 14. PRODUCTION APPROVAL
+        // ============================================================
+
+        stage('Production Approval') {
+
+            when {
+                branch 'release'
+            }
+
+            steps {
+
+                echo '===== Waiting for Production Approval ====='
+
+                input message: 'Approve deployment to PRODUCTION?', 
+                      ok: 'Deploy to Production'
+            }
+        }
+
+
+        // ============================================================
+        // 15. DEPLOY TO PROD
+        // ============================================================
+
+        stage('Deploy to PROD EKS') {
+
+            when {
+                branch 'release'
+            }
+
+            steps {
+
+                echo '===== Deploying to PROD EKS ====='
+
+                           }
+        }
+
+
+        // ============================================================
+        // 16. PROD VALIDATION
+        // ============================================================
+
+        stage('PROD Validation') {
+
+            when {
+                branch 'release'
+            }
+
+            steps {
+
+                echo '===== PROD Deployment Validation ====='
+
+                
+            }
+        }
+        
+    
+
+
+    }
+
+
+    post {
+
+        success {
+            echo '======================================'
+            echo ' PIPELINE SUCCESSFUL'
+            echo '======================================'
+            echo "ECR IMAGE: ${ECR_IMAGE}"
+        }
+
+        failure {
+            echo '======================================'
+            echo ' PIPELINE FAILED'
+            echo '======================================'
+        }
+
+        always {
+            echo '===== Pipeline Completed ====='
+        }
+    }
+}
