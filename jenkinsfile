@@ -96,60 +96,8 @@ pipeline {
         }
 
 
-        stage('Login to AWS ECR') {
-            steps {
-                echo '===== Logging into AWS ECR ====='
+       
 
-                sh '''
-                    aws ecr get-login-password \
-                    --region ${AWS_REGION} |
-                    docker login \
-                    --username AWS \
-                    --password-stdin ${ECR_REGISTRY}
-                '''
-            }
-        }
-
-
-        stage('Tag Docker Image') {
-            steps {
-                echo '===== Tagging Docker Image ====='
-
-                sh '''
-                    echo "Source Image: ${IMAGE_NAME}:${IMAGE_TAG}"
-                    echo "ECR Image: ${ECR_IMAGE}"
-
-                    docker tag \
-                    ${IMAGE_NAME}:${IMAGE_TAG} \
-                    ${ECR_IMAGE}
-                '''
-            }
-        }
-
-
-        stage('Push Image to ECR') {
-            steps {
-                echo '===== Pushing Image to ECR ====='
-
-                sh '''
-                    docker push ${ECR_IMAGE}
-                '''
-            }
-        }
-
-
-        stage('Verify Image') {
-            steps {
-                echo '===== Verifying Image in ECR ====='
-
-                sh '''
-                    aws ecr describe-images \
-                    --repository-name ${ECR_REPO} \
-                    --image-ids imageTag=${IMAGE_TAG} \
-                    --region ${AWS_REGION}
-                '''
-            }
-        }
         
   stage('Deploy to DEV EKS') {
 
